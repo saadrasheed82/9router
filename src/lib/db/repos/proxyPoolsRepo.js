@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 function rowToPool(row) {
   if (!row) return null;
@@ -74,6 +75,7 @@ export async function createProxyPool(data) {
     updatedAt: now,
   };
   upsert(db, pool);
+  mirrorLocalWrite({ localTable: "proxyPools", recordId: pool.id, eventType: "INSERT", version: Date.now(), payload: pool }).catch(() => {});
   return pool;
 }
 
@@ -87,6 +89,9 @@ export async function updateProxyPool(id, data) {
     upsert(db, merged);
     result = merged;
   });
+  if (result) {
+    mirrorLocalWrite({ localTable: "proxyPools", recordId: result.id, eventType: "UPDATE", version: Date.now(), payload: result }).catch(() => {});
+  }
   return result;
 }
 
@@ -99,5 +104,8 @@ export async function deleteProxyPool(id) {
     removed = rowToPool(row);
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
   });
+  if (removed) {
+    mirrorLocalWrite({ localTable: "proxyPools", recordId: id, eventType: "DELETE", version: Date.now(), payload: { id } }).catch(() => {});
+  }
   return removed;
 }

@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");
@@ -13,10 +14,12 @@ export async function getModelAliases() {
 
 export async function setModelAlias(alias, model) {
   await aliasKv.set(alias, model);
+  mirrorLocalWrite({ localTable: "modelAliases", recordId: alias, eventType: "UPDATE", version: Date.now(), payload: { alias, targetModel: model } }).catch(() => {});
 }
 
 export async function deleteModelAlias(alias) {
   await aliasKv.remove(alias);
+  mirrorLocalWrite({ localTable: "modelAliases", recordId: alias, eventType: "DELETE", version: Date.now(), payload: { alias } }).catch(() => {});
 }
 
 // customModels: key=`${providerAlias}|${id}|${type}`, value=full model object
@@ -41,11 +44,15 @@ export async function addCustomModel({ providerAlias, id, type = "llm", name }) 
     db.run(`INSERT INTO kv(scope, key, value) VALUES('customModels', ?, ?)`, [k, value]);
     added = true;
   });
+  if (added) {
+    mirrorLocalWrite({ localTable: "customModels", recordId: `${providerAlias}|${id}|${type}`, eventType: "INSERT", version: Date.now(), payload: { providerAlias, id, type, name: name || id } }).catch(() => {});
+  }
   return added;
 }
 
 export async function deleteCustomModel({ providerAlias, id, type = "llm" }) {
   await customKv.remove(customKey(providerAlias, id, type));
+  mirrorLocalWrite({ localTable: "customModels", recordId: `${providerAlias}|${id}|${type}`, eventType: "DELETE", version: Date.now(), payload: { providerAlias, id, type } }).catch(() => {});
 }
 
 // mitmAlias: key=toolName, value=mappings object
@@ -59,4 +66,5 @@ export async function getMitmAlias(toolName) {
 
 export async function setMitmAliasAll(toolName, mappings) {
   await mitmKv.set(toolName, mappings || {});
+  mirrorLocalWrite({ localTable: "modelAliases", recordId: `mitm:${toolName}`, eventType: "UPDATE", version: Date.now(), payload: { toolName, mappings } }).catch(() => {});
 }

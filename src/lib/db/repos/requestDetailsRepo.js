@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 const DEFAULT_MAX_RECORDS = 200;
 const DEFAULT_BATCH_SIZE = 20;
@@ -127,6 +128,7 @@ export async function saveRequestDetail(detail) {
   if (!config.enabled) return;
 
   writeBuffer.push(detail);
+  mirrorLocalWrite({ localTable: "requestDetails", recordId: detail.id || generateDetailId(detail.model), eventType: "INSERT", version: Date.now(), payload: { provider: detail.provider, model: detail.model, connectionId: detail.connectionId, status: detail.status } }).catch(() => {});
 
   // Trigger immediate flush if batch threshold reached.
   // flushToDatabase() drains entire buffer in a loop, so all pushes during await are persisted.

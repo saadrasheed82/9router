@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
@@ -74,6 +75,7 @@ export async function updatePricing(pricingData) {
     }
   });
   invalidate();
+  mirrorLocalWrite({ localTable: "pricing", recordId: "bulk", eventType: "UPDATE", version: Date.now(), payload: pricingData }).catch(() => {});
   return await getUserPricing();
 }
 
@@ -98,11 +100,14 @@ export async function resetPricing(provider, model) {
     }
   });
   invalidate();
+  const payload = provider ? (model ? { [provider]: { [model]: null } } : { [provider]: null }) : { all: true };
+  mirrorLocalWrite({ localTable: "pricing", recordId: provider || "all", eventType: "UPDATE", version: Date.now(), payload }).catch(() => {});
   return await getUserPricing();
 }
 
 export async function resetAllPricing() {
   await pricingKv.clear();
   invalidate();
+  mirrorLocalWrite({ localTable: "pricing", recordId: "all", eventType: "UPDATE", version: Date.now(), payload: {} }).catch(() => {});
   return {};
 }

@@ -1,5 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -81,7 +82,15 @@ export async function updateSettings(updates) {
       [stringifyJson(next)]
     );
   });
-  return mergeWithDefaults(next);
+  const result = mergeWithDefaults(next);
+  mirrorLocalWrite({
+    localTable: "settings",
+    recordId: "settings",
+    eventType: "UPDATE",
+    version: Date.now(),
+    payload: { id: "settings", data: result },
+  }).catch(() => {});
+  return result;
 }
 
 export async function isCloudEnabled() {

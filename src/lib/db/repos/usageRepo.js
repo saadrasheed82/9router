@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
@@ -281,6 +282,7 @@ export async function saveRequestUsage(entry) {
 
     pushToRing(entry);
     statsEmitter.emit("update");
+    mirrorLocalWrite({ localTable: "usageHistory", recordId: entry.id || entry.timestamp || String(Date.now()), eventType: "INSERT", version: Date.now(), payload: { timestamp: entry.timestamp, provider: entry.provider, model: entry.model, connectionId: entry.connectionId, promptTokens, completionTokens, cost: entry.cost, status: entry.status } }).catch(() => {});
   } catch (e) {
     console.error("Failed to save usage stats:", e);
   }

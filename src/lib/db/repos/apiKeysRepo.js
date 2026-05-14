@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -42,6 +43,7 @@ export async function createApiKey(name, machineId) {
     `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
     [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt]
   );
+  mirrorLocalWrite({ localTable: "apiKeys", recordId: apiKey.id, eventType: "INSERT", version: Date.now(), payload: apiKey }).catch(() => {});
   return apiKey;
 }
 
@@ -58,13 +60,18 @@ export async function updateApiKey(id, data) {
     );
     result = merged;
   });
+  if (result) {
+    mirrorLocalWrite({ localTable: "apiKeys", recordId: result.id, eventType: "UPDATE", version: Date.now(), payload: result }).catch(() => {});
+  }
   return result;
 }
 
 export async function deleteApiKey(id) {
   const db = await getAdapter();
   const res = db.run(`DELETE FROM apiKeys WHERE id = ?`, [id]);
-  return (res?.changes ?? 0) > 0;
+  const ok = (res?.changes ?? 0) > 0;
+  if (ok) mirrorLocalWrite({ localTable: "apiKeys", recordId: id, eventType: "DELETE", version: Date.now(), payload: { id } }).catch(() => {});
+  return ok;
 }
 
 export async function validateApiKey(key) {

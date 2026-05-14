@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
+const SECRET_FIELDS = ["apiKey", "accessToken", "refreshToken", "expiresAt", "tokenType"];
 
 const OPTIONAL_FIELDS = [
   "displayName", "email", "globalPriority", "defaultModel",
@@ -142,6 +144,18 @@ export async function createProviderConnection(data) {
     result = conn;
   });
 
+  if (result) {
+    const syncPayload = { ...result };
+    for (const f of SECRET_FIELDS) delete syncPayload[f];
+    mirrorLocalWrite({
+      localTable: "providerConnections",
+      recordId: result.id,
+      eventType: "INSERT",
+      version: Date.now(),
+      payload: syncPayload,
+    }).catch(() => {});
+  }
+
   return result;
 }
 
@@ -158,6 +172,17 @@ export async function updateProviderConnection(id, data) {
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
   });
+  if (result) {
+    const syncPayload = { ...result };
+    for (const f of SECRET_FIELDS) delete syncPayload[f];
+    mirrorLocalWrite({
+      localTable: "providerConnections",
+      recordId: result.id,
+      eventType: "UPDATE",
+      version: Date.now(),
+      payload: syncPayload,
+    }).catch(() => {});
+  }
   return result;
 }
 
@@ -171,6 +196,9 @@ export async function deleteProviderConnection(id) {
     reorderInTx(db, row.provider);
     ok = true;
   });
+  if (ok) {
+    mirrorLocalWrite({ localTable: "providerConnections", recordId: id, eventType: "DELETE", version: Date.now(), payload: { id } }).catch(() => {});
+  }
   return ok;
 }
 

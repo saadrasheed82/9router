@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { mirrorLocalWrite } from "../hooks/cloudSyncHooks.js";
 
 function rowToNode(row) {
   if (!row) return null;
@@ -66,6 +67,7 @@ export async function createProviderNode(data) {
     updatedAt: now,
   };
   upsert(db, node);
+  mirrorLocalWrite({ localTable: "providerNodes", recordId: node.id, eventType: "INSERT", version: Date.now(), payload: node }).catch(() => {});
   return node;
 }
 
@@ -78,6 +80,7 @@ export async function updateProviderNode(id, data) {
     const merged = { ...rowToNode(row), ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     result = merged;
+    mirrorLocalWrite({ localTable: "providerNodes", recordId: result.id, eventType: "UPDATE", version: Date.now(), payload: result }).catch(() => {});
   });
   return result;
 }
@@ -91,5 +94,8 @@ export async function deleteProviderNode(id) {
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
   });
+  if (removed) {
+    mirrorLocalWrite({ localTable: "providerNodes", recordId: id, eventType: "DELETE", version: Date.now(), payload: { id } }).catch(() => {});
+  }
   return removed;
 }
