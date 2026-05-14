@@ -10,10 +10,15 @@ const INTERNAL_BASE_URL =
  * Cloud sync scheduler
  */
 export class CloudSyncScheduler {
-  constructor(machineId = null, intervalMinutes = 15) {
+  constructor(machineId = null, intervalMinutes = 15, manager = null) {
     this.machineId = machineId;
     this.intervalMinutes = intervalMinutes;
     this.intervalId = null;
+    this.manager = manager;
+  }
+
+  setManager(manager) {
+    this.manager = manager;
   }
 
   /**
@@ -85,8 +90,12 @@ export class CloudSyncScheduler {
       return null;
     }
 
+    if (this.manager?.replayPendingEvents) {
+      return await this.manager.replayPendingEvents();
+    }
+
     await this.initializeMachineId();
-    
+
     // Call internal API route which handles both sync and token update
     const response = await fetch(`${INTERNAL_BASE_URL}/api/sync/cloud`, {
       method: "POST",
@@ -114,9 +123,11 @@ export class CloudSyncScheduler {
 // Export a singleton instance if needed
 let cloudSyncScheduler = null;
 
-export async function getCloudSyncScheduler(machineId = null, intervalMinutes = 15) {
+export async function getCloudSyncScheduler(machineId = null, intervalMinutes = 15, manager = null) {
   if (!cloudSyncScheduler) {
-    cloudSyncScheduler = new CloudSyncScheduler(machineId, intervalMinutes);
+    cloudSyncScheduler = new CloudSyncScheduler(machineId, intervalMinutes, manager);
+  } else if (manager) {
+    cloudSyncScheduler.setManager(manager);
   }
   return cloudSyncScheduler;
 }
