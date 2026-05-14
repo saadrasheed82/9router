@@ -1,5 +1,5 @@
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -146,6 +146,26 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_rd_provider ON requestDetails(provider)",
       "CREATE INDEX IF NOT EXISTS idx_rd_model ON requestDetails(model)",
       "CREATE INDEX IF NOT EXISTS idx_rd_conn ON requestDetails(connectionId)",
+    ],
+  },
+  syncEvents: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      userId: "TEXT",
+      deviceId: "TEXT",
+      tableName: "TEXT NOT NULL",
+      recordId: "TEXT",
+      eventType: "TEXT NOT NULL",
+      version: "INTEGER DEFAULT 1",
+      payload: "TEXT NOT NULL",
+      status: "TEXT NOT NULL DEFAULT 'pending'",
+      error: "TEXT",
+      createdAt: "TEXT NOT NULL",
+      syncedAt: "TEXT",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_sync_events_status ON syncEvents(status)",
+      "CREATE INDEX IF NOT EXISTS idx_sync_events_created ON syncEvents(createdAt)",
     ],
   },
 };
