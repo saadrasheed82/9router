@@ -1,4 +1,5 @@
 import { buildSyncEventPayload, mapLocalTableToSupabase } from "./syncEvents.js";
+import { mapLocalProviderConnectionToSupabaseRow } from "./providerConnectionSyncMap.js";
 
 export class CloudSyncManager {
   constructor({ supabase, enabled = false, userId = null, deviceId = null, localStore = null } = {}) {
@@ -40,12 +41,21 @@ export class CloudSyncManager {
       return { pushed: true };
     }
 
-    const row = {
-      ...payload,
-      user_id: payload.user_id || this.userId,
-      device_id: payload.device_id === undefined ? this.deviceId : payload.device_id,
-      version,
-    };
+    let row;
+    if (table === "provider_connections") {
+      row = mapLocalProviderConnectionToSupabaseRow(payload, {
+        userId: this.userId,
+        deviceId: this.deviceId,
+        version,
+      });
+    } else {
+      row = {
+        ...payload,
+        user_id: payload.user_id || this.userId,
+        device_id: payload.device_id === undefined ? this.deviceId : payload.device_id,
+        version,
+      };
+    }
     const upsert = await this.supabase.from(table).upsert(row);
     if (upsert.error) throw upsert.error;
     return { pushed: true };

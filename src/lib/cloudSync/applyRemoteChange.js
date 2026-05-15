@@ -12,6 +12,7 @@
 
 import { getAdapter } from "@/lib/db/driver.js";
 import { parseJson, stringifyJson } from "@/lib/db/helpers/jsonCol.js";
+import { mergeLocalProviderConnectionData } from "./providerConnectionSyncMap.js";
 import { LOCAL_TO_SUPABASE_TABLE } from "./tableMap.js";
 
 // Reverse lookup: Supabase table name -> local table name
@@ -21,23 +22,29 @@ const SUPABASE_TO_LOCAL_TABLE = Object.fromEntries(
 
 // Maps a realtime payload's new record to the local SQLite column schema.
 // Returns null to skip the event.
-function normalizePayload(table, newRec) {
+function normalizePayload(table, newRec, existingDataStr = null) {
   if (!newRec) return null;
 
   switch (table) {
     case "provider_connections": {
-      // Map: id, provider, authType, name, email, priority, isActive, data (JSON), createdAt, updatedAt
-      const { id, provider, auth_type, name, email, priority, is_active, data, created_at, updated_at } = newRec;
+      // Supabase uses typed columns + provider_specific_data; local SQLite stores extras in JSON `data`.
+      const id = newRec.id;
+      const provider = newRec.provider;
       if (!id || !provider) return null;
+      const auth_type = newRec.auth_type ?? newRec.authType;
+      const is_active = newRec.is_active ?? newRec.isActive;
+      const created_at = newRec.created_at ?? newRec.createdAt;
+      const updated_at = newRec.updated_at ?? newRec.updatedAt;
+      const activeBool = is_active === undefined || is_active === null ? true : Boolean(is_active);
       return {
         id,
         provider,
         authType: auth_type ?? "oauth",
-        name: name ?? null,
-        email: email ?? null,
-        priority: priority ?? null,
-        isActive: is_active ? 1 : 0,
-        data: typeof data === "object" ? JSON.stringify(data) : (data ?? "{}"),
+        name: newRec.name ?? null,
+        email: newRec.email ?? null,
+        priority: newRec.priority ?? null,
+        isActive: activeBool ? 1 : 0,
+        data: mergeLocalProviderConnectionData(existingDataStr, newRec),
         createdAt: created_at ?? null,
         updatedAt: updated_at ?? null,
       };
@@ -174,6 +181,20 @@ export async function applyRemoteChange({ table, payload, currentDeviceId }) {
     return { applied: false, reason: "self_event" };
   }
 
+  // Supabase tombstone (deleted_at) — remove locally (realtime often sends UPDATE, not DELETE)
+  if (table === "provider_connections" && newRecord) {
+    const deletedAt = newRecord.deleted_at ?? newRecord.deletedAt;
+    if (deletedAt && eventType !== "DELETE") {
+      const db = await getAdapter();
+      try {
+        db.run(`DELETE FROM providerConnections WHERE id = ?`, [recordId]);
+      } catch {
+        // ignore
+      }
+      return { applied: true, table: localTable, recordId, eventType: "DELETE", reason: "soft_delete" };
+    }
+  }
+
   // Handle DELETE
   if (eventType === "DELETE") {
     const db = await getAdapter();
@@ -188,7 +209,12 @@ export async function applyRemoteChange({ table, payload, currentDeviceId }) {
   // Handle INSERT — always apply (no local state to check)
   if (eventType === "INSERT") {
     const db = await getAdapter();
-    const normalized = normalizePayload(table, newRecord);
+    let existingDataStr = null;
+    if (table === "provider_connections") {
+      const row = db.get(`SELECT data FROM providerConnections WHERE id = ?`, [recordId]);
+      existingDataStr = row?.data ?? null;
+    }
+    const normalized = normalizePayload(table, newRecord, existingDataStr);
     if (!normalized) return { applied: false, reason: "normalization_failed" };
 
     if (localTable === "providerConnections") {
@@ -262,7 +288,12 @@ export async function applyRemoteChange({ table, payload, currentDeviceId }) {
       return { applied: false, reason: "local_is_newer" };
     }
 
-    const normalized = normalizePayload(table, newRecord);
+    let existingDataStr = null;
+    if (table === "provider_connections") {
+      const row = db.get(`SELECT data FROM providerConnections WHERE id = ?`, [recordId]);
+      existingDataStr = row?.data ?? null;
+    }
+    const normalized = normalizePayload(table, newRecord, existingDataStr);
     if (!normalized) return { applied: false, reason: "normalization_failed" };
 
     if (localTable === "providerConnections") {
