@@ -10,7 +10,8 @@
       "Bash(npm install *)",
       "Bash(node tests/vitest.config.js)",
       "Bash(npx vitest *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(node node_modules/vitest/vitest.mjs run --config tests/vitest.config.js tests/unit/)"
     ]
   },
   "enableAllProjectMcpServers": true,
